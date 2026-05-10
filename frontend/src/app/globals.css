@@ -1,0 +1,55 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  * { @apply box-border; }
+  html { scroll-behavior: smooth; }
+  body {
+    @apply font-sans antialiased text-ink bg-white;
+    font-feature-settings: 'ss01', 'cv11';
+  }
+  h1, h2, h3, h4 {
+    @apply font-serif tracking-tight;
+    font-weight: 500;
+  }
+}
+
+@layer components {
+  /* Botones rectangulares estilo Velez */
+  .btn-primary {
+    @apply bg-ink text-white font-medium py-3.5 px-8 uppercase tracking-[0.18em] text-[11px] transition-all duration-200 hover:bg-cuero disabled:opacity-40 disabled:cursor-not-allowed inline-block border border-ink hover:border-cuero;
+  }
+  .btn-secondary {
+    @apply bg-transparent border border-ink text-ink hover:bg-ink hover:text-white font-medium py-3.5 px-8 uppercase tracking-[0.18em] text-[11px] transition-all duration-200 inline-block;
+  }
+  .btn-cuero {
+    @apply bg-cuero hover:bg-cognac text-white font-medium py-3.5 px-8 uppercase tracking-[0.18em] text-[11px] transition-all duration-200 inline-block;
+  }
+  .input {
+    @apply w-full bg-transparent border-b border-gray-300 px-0 py-3 text-sm focus:outline-none focus:border-ink transition-colors;
+  }
+  .label-eyebrow {
+    @apply text-[10px] font-semibold tracking-[0.28em] uppercase text-cuero;
+  }
+  /* Animación de underline para enlaces */
+  .link-underline {
+    @apply relative inline-block;
+  }
+  .link-underline::after {
+    content: '';
+    @apply absolute left-0 bottom-0 w-0 h-px bg-current transition-all duration-300;
+  }
+  .link-underline:hover::after { @apply w-full; }
+
+  /* Card sin border, sin sombras */
+  .product-card {
+    @apply bg-white;
+  }
+}
+
+/* Scrollbar sutil */
+::-webkit-scrollbar { width: 8px; height: 8px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: #D9CFBE; border-radius: 4px; }
+::-webkit-scrollbar-thumb:hover { background: #A06B3B; }

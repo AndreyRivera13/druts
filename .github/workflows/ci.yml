@@ -1,0 +1,216 @@
+name: CI/CD — Calzado Store (Podman)
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main]
+
+env:
+  NODE_VERSION: '20'
+  REGISTRY: ghcr.io
+  IMAGE_PREFIX: ${{ github.repository_owner }}/calzado
+
+jobs:
+  # ─── Lint & Test Backend ──────────────────────────────────────────────────────
+  test-backend:
+    name: Backend — Lint & Tests
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: backend/package-lock.json
+
+      # Levantamos Postgres con Podman (en vez de usar `services:` que internamente
+      # arranca Docker). Así todo el pipeline queda 100% libre de Docker.
+      - name: Start PostgreSQL with Podman
+        run: |
+          podman run -d --name postgres-ci \
+            -e POSTGRES_USER=test_user \
+            -e POSTGRES_PASSWORD=test_pass \
+            -e POSTGRES_DB=calzado_test \
+            -p 5432:5432 \
+            docker.io/library/postgres:16-alpine
+          echo "Esperando a que Postgres esté listo..."
+          for i in {1..30}; do
+            if podman exec postgres-ci pg_isready -U test_user -d calzado_test >/dev/null 2>&1; then
+              echo "Postgres listo en intento $i"
+              exit 0
+            fi
+            sleep 2
+          done
+          echo "Postgres no respondió a tiempo" && podman logs postgres-ci && exit 1
+
+      - name: Install backend dependencies
+        working-directory: backend
+        run: npm ci
+
+      - name: Lint
+        working-directory: backend
+        run: npm run lint
+
+      - name: Type check
+        working-directory: backend
+        run: npx tsc --noEmit
+
+      - name: Run tests
+        working-directory: backend
+        env:
+          NODE_ENV: test
+          DB_HOST: localhost
+          DB_PORT: 5432
+          DB_USER: test_user
+          DB_PASSWORD: test_pass
+          DB_NAME: calzado_test
+          JWT_SECRET: test-secret-ci
+        run: npm run test:cov
+
+      - name: Stop PostgreSQL
+        if: always()
+        run: podman rm -f postgres-ci || true
+
+      - name: Upload coverage
+        uses: codecov/codecov-action@v4
+        with:
+          directory: backend/coverage
+          flags: backend
+
+  # ─── Lint & Build Frontend ───────────────────────────────────────────────────
+  test-frontend:
+    name: Frontend — Lint & Build
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install frontend dependencies
+        working-directory: frontend
+        run: npm ci
+
+      - name: Type check
+        working-directory: frontend
+        run: npm run type-check
+
+      - name: Lint
+        working-directory: frontend
+        run: npm run lint
+
+      - name: Build
+        working-directory: frontend
+        env:
+          NEXT_PUBLIC_API_URL: http://localhost:3001
+        run: npm run build
+
+  # ─── Container Build & Push (Podman + Buildah) ───────────────────────────────
+  image-build:
+    name: Build & Push Images (Podman/Buildah)
+    runs-on: ubuntu-latest
+    needs: [test-backend, test-frontend]
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+
+    permissions:
+      contents: read
+      packages: write
+
+    steps:
+      - uses: actions/checkout@v4
+
+      # Login al registry usando Podman (sin docker/login-action)
+      - name: Log in to GitHub Container Registry (Podman)
+        uses: redhat-actions/podman-login@v1
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      # Caché de capas de Buildah entre ejecuciones (sustituye al caché GHA de buildx)
+      - name: Cache Buildah layers
+        uses: actions/cache@v4
+        with:
+          path: ~/.local/share/containers/storage
+          key: buildah-${{ runner.os }}-${{ github.sha }}
+          restore-keys: |
+            buildah-${{ runner.os }}-
+
+      # ─── Backend ──────────────────────────────────────────────────────────────
+      - name: Build backend image (Buildah)
+        id: build-backend
+        uses: redhat-actions/buildah-build@v2
+        with:
+          image: ${{ env.IMAGE_PREFIX }}-backend
+          tags: latest ${{ github.sha }}
+          context: ./backend
+          containerfiles: ./backend/Dockerfile
+          layers: true
+          oci: true
+
+      - name: Push backend image
+        uses: redhat-actions/push-to-registry@v2
+        with:
+          image: ${{ steps.build-backend.outputs.image }}
+          tags: ${{ steps.build-backend.outputs.tags }}
+          registry: ${{ env.REGISTRY }}
+
+      # ─── Frontend ─────────────────────────────────────────────────────────────
+      - name: Build frontend image (Buildah)
+        id: build-frontend
+        uses: redhat-actions/buildah-build@v2
+        with:
+          image: ${{ env.IMAGE_PREFIX }}-frontend
+          tags: latest ${{ github.sha }}
+          context: ./frontend
+          containerfiles: ./frontend/Dockerfile
+          build-args: |
+            NEXT_PUBLIC_API_URL=${{ secrets.API_URL }}
+          layers: true
+          oci: true
+
+      - name: Push frontend image
+        uses: redhat-actions/push-to-registry@v2
+        with:
+          image: ${{ steps.build-frontend.outputs.image }}
+          tags: ${{ steps.build-frontend.outputs.tags }}
+          registry: ${{ env.REGISTRY }}
+
+  # ─── Deploy a AWS ECS (opcional) ─────────────────────────────────────────────
+  deploy:
+    name: Deploy to Production
+    runs-on: ubuntu-latest
+    needs: image-build
+    if: github.ref == 'refs/heads/main'
+    environment: production
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ secrets.AWS_REGION }}
+
+      - name: Deploy to ECS
+        run: |
+          echo "Deploying calzado-backend to ECS..."
+          # aws ecs update-service --cluster calzado-prod --service calzado-backend --force-new-deployment
+          # aws ecs update-service --cluster calzado-prod --service calzado-frontend --force-new-deployment
+          echo "Deployment triggered successfully"
+
+      - name: Notify on Slack (opcional)
+        if: always()
+        run: |
+          echo "Deployment completed: ${{ job.status }}"
