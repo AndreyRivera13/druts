@@ -15,6 +15,7 @@ const nextConfig = {
       { protocol: 'https', hostname: 'calzado-images.s3.amazonaws.com' },
       { protocol: 'https', hostname: 'images.unsplash.com' },
       { protocol: 'https', hostname: 'via.placeholder.com' },
+      { protocol: 'https', hostname: 'nalqomlvgqltxitiujno.supabase.co', pathname: '/storage/v1/object/public/**' },
     ],
   },
   async rewrites() {
