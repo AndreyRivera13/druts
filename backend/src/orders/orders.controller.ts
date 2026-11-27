@@ -55,7 +55,7 @@ export class OrdersController {
   @Get(':id')
   @ApiOperation({ summary: 'Detalle de pedido' })
   findOne(@Param('id') id: string, @Request() req) {
-    return this.ordersService.findOne(id);
+    return this.ordersService.findOne(id, { userId: req.user.userId, role: req.user.role });
   }
 
   @Put(':id/status')
@@ -65,8 +65,14 @@ export class OrdersController {
   updateStatus(
     @Param('id') id: string,
     @Body('status') status: OrderStatus,
+    @Request() req,
     @Body('trackingCode') trackingCode?: string,
   ) {
-    return this.ordersService.updateStatus(id, status, trackingCode);
+    return this.ordersService.updateStatus(
+      id,
+      status,
+      trackingCode,
+      { userId: req.user.userId, role: req.user.role },
+    );
   }
 }

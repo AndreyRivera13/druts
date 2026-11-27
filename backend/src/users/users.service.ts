@@ -1,8 +1,9 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { Injectable, NotFoundException, ConflictException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { User } from './entities/user.entity';
 import { RegisterDto } from '../auth/dto/register.dto';
+import { UpdateProfileDto } from './dto/update-profile.dto';
 
 @Injectable()
 export class UsersService {
@@ -34,9 +35,21 @@ export class UsersService {
     return this.repo.findOne({ where: { email } });
   }
 
-  async update(id: string, dto: Partial<User>): Promise<User> {
+  async updateProfile(id: string, dto: UpdateProfileDto): Promise<User> {
     const user = await this.findOne(id);
-    Object.assign(user, dto);
+
+    if (dto.email && dto.email !== user.email) {
+      const exists = await this.findByEmail(dto.email);
+      if (exists) throw new ConflictException('El correo ya está registrado');
+    }
+
+    if (dto.name !== undefined) user.name = dto.name;
+    if (dto.email !== undefined) user.email = dto.email;
+    if (dto.phone !== undefined) user.phone = dto.phone;
+    if (dto.address !== undefined) user.address = dto.address;
+    if (dto.city !== undefined) user.city = dto.city;
+    if (dto.avatarUrl !== undefined) user.avatarUrl = dto.avatarUrl;
+
     return this.repo.save(user);
   }
 

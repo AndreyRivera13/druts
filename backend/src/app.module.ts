@@ -1,7 +1,8 @@
 import { Module } from '@nestjs/common';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { TypeOrmModule, TypeOrmModuleOptions } from '@nestjs/typeorm';
-import { ThrottlerModule } from '@nestjs/throttler';
+import { ThrottlerGuard, ThrottlerModule } from '@nestjs/throttler';
+import { APP_GUARD } from '@nestjs/core';
 import { AuthModule } from './auth/auth.module';
 import { UsersModule } from './users/users.module';
 import { ProductsModule } from './products/products.module';
@@ -51,7 +52,8 @@ import { NotificationsModule } from './notifications/notifications.module';
       },
       inject: [ConfigService],
     }),
-    ThrottlerModule.forRoot([{ ttl: 60000, limit: 100 }]),
+    // 200 req/min por IP: suficiente para el storefront, limita abuso.
+    ThrottlerModule.forRoot([{ ttl: 60000, limit: 200 }]),
     AuthModule,
     UsersModule,
     ProductsModule,
@@ -64,6 +66,12 @@ import { NotificationsModule } from './notifications/notifications.module';
     RecommendationsModule,
     AnalyticsModule,
     NotificationsModule,
+  ],
+  providers: [
+    {
+      provide: APP_GUARD,
+      useClass: ThrottlerGuard,
+    },
   ],
 })
 export class AppModule {}

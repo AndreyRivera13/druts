@@ -1,6 +1,6 @@
 import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { EntityManager, Repository } from 'typeorm';
 import { Coupon, DiscountType } from './entities/coupon.entity';
 
 @Injectable()
@@ -8,6 +8,10 @@ export class CouponsService {
   constructor(
     @InjectRepository(Coupon) private repo: Repository<Coupon>,
   ) {}
+
+  private couponRepo(manager?: EntityManager): Repository<Coupon> {
+    return manager ? manager.getRepository(Coupon) : this.repo;
+  }
 
   async create(dto: Partial<Coupon>): Promise<Coupon> {
     const coupon = this.repo.create(dto);
@@ -18,8 +22,18 @@ export class CouponsService {
     return this.repo.find({ order: { createdAt: 'DESC' } });
   }
 
-  async validate(code: string, subtotal: number): Promise<{ coupon: Coupon; discountAmount: number }> {
-    const coupon = await this.repo.findOne({ where: { code: code.toUpperCase() } });
+  async validate(
+    code: string,
+    subtotal: number,
+    manager?: EntityManager,
+  ): Promise<{ coupon: Coupon; discountAmount: number }> {
+    const repo = this.couponRepo(manager);
+    const coupon = manager
+      ? await repo.findOne({
+          where: { code: code.toUpperCase() },
+          lock: { mode: 'pessimistic_write' },
+        })
+      : await repo.findOne({ where: { code: code.toUpperCase() } });
     if (!coupon) throw new NotFoundException('Cupón no encontrado');
     if (!coupon.isValid) throw new BadRequestException('El cupón no es válido o ha expirado');
     if (coupon.minimumPurchase && subtotal < Number(coupon.minimumPurchase)) {
@@ -40,8 +54,8 @@ export class CouponsService {
     return { coupon, discountAmount };
   }
 
-  async incrementUsage(couponId: string): Promise<void> {
-    await this.repo.increment({ id: couponId }, 'usageCount', 1);
+  async incrementUsage(couponId: string, manager?: EntityManager): Promise<void> {
+    await this.couponRepo(manager).increment({ id: couponId }, 'usageCount', 1);
   }
 
   async remove(id: string): Promise<void> {
