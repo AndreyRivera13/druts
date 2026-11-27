@@ -3,6 +3,7 @@ import {
 } from '@nestjs/common';
 import { ApiTags, ApiBearerAuth, ApiOperation } from '@nestjs/swagger';
 import { UsersService } from './users.service';
+import { UpdateProfileDto } from './dto/update-profile.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
 import { Roles } from '../common/decorators/roles.decorator';
@@ -29,8 +30,8 @@ export class UsersController {
 
   @Patch('profile')
   @ApiOperation({ summary: 'Actualizar perfil' })
-  updateProfile(@Request() req, @Body() dto: any) {
-    return this.usersService.update(req.user.userId, dto);
+  updateProfile(@Request() req, @Body() dto: UpdateProfileDto) {
+    return this.usersService.updateProfile(req.user.userId, dto);
   }
 
   @Get('top-customers')
