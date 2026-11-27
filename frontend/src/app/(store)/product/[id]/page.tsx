@@ -53,6 +53,26 @@ export default function ProductPage() {
     enabled: !!id,
   });
 
+  const variants = (product as any)?.variants;
+  const uniqueColors = useMemo(() => {
+    if (!variants) return [];
+    const map = new Map<string, any>();
+    for (const v of variants) if (!map.has(v.color)) map.set(v.color, v);
+    return Array.from(map.values());
+  }, [variants]);
+
+  const sizesForColor = useMemo(() => {
+    if (!variants || !selectedColor) return [];
+    return variants
+      .filter((v: any) => v.color === selectedColor)
+      .sort((a: any, b: any) => Number(a.size) - Number(b.size));
+  }, [variants, selectedColor]);
+
+  const selectedVariant = useMemo(
+    () => variants?.find((v: any) => v.color === selectedColor && v.size === selectedSize),
+    [variants, selectedColor, selectedSize],
+  );
+
   if (loadingProduct) return <ProductSkeleton />;
   if (!product) {
     return (
@@ -72,25 +92,6 @@ export default function ProductPage() {
   const discountPercent = salePriceNum != null && salePriceNum < priceNum
     ? Math.round(((priceNum - salePriceNum) / priceNum) * 100) : 0;
   const basePrice = salePriceNum != null && salePriceNum < priceNum ? salePriceNum : priceNum;
-
-  const uniqueColors = useMemo(() => {
-    if (!p.variants) return [];
-    const map = new Map<string, any>();
-    for (const v of p.variants) if (!map.has(v.color)) map.set(v.color, v);
-    return Array.from(map.values());
-  }, [p.variants]);
-
-  const sizesForColor = useMemo(() => {
-    if (!p.variants || !selectedColor) return [];
-    return p.variants
-      .filter((v: any) => v.color === selectedColor)
-      .sort((a: any, b: any) => Number(a.size) - Number(b.size));
-  }, [p.variants, selectedColor]);
-
-  const selectedVariant = useMemo(
-    () => p.variants?.find((v: any) => v.color === selectedColor && v.size === selectedSize),
-    [p.variants, selectedColor, selectedSize],
-  );
 
   const currentPrice = selectedVariant?.priceAdjustment
     ? basePrice + Number(selectedVariant.priceAdjustment)
